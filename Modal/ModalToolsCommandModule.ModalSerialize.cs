@@ -1,7 +1,10 @@
-﻿using Discord;
+using Discord;
 using Discord.Interactions;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -165,6 +168,118 @@ namespace DiscordNetTools.Modal
             modalBuilder.AddSelectMenu(label, customId, null, placeholder, minValues, maxValues, isRequired, disabled, type, null, defaultValues, id, description, labelId);
         }
 
+        private static void BuildSelectMenu(ModalBuilder modalBuilder, PropertyInfo propertyInfo, UserDiscordModalContent? userDiscordModalContent)
+        {
+            var attributes = propertyInfo.GetCustomAttributes();
+
+            string label = propertyInfo.Name;
+            string customId = null;
+            string placeholder = null;
+            int minValues = 1;
+            int maxValues = 1;
+            bool isRequired = true;
+            bool disabled = false;
+            ComponentType type = ComponentType.SelectMenu; // This
+            SelectMenuDefaultValue[] defaultValues = null;
+            int? id = null;
+            string description = null;
+            int? labelId = null;
+            List<SelectMenuOptionBuilder> options = new();
+
+            var builder = new SelectMenuBuilder();
+
+            foreach (var attribute in attributes)
+            {
+                switch (attribute)
+                {
+                    case ModalSelectMenuAttribute textInput:
+
+                        customId = textInput.CustomId;
+                        placeholder = textInput.Placeholder;
+                        minValues = textInput.MinValues;
+                        maxValues = textInput.MaxValues;
+                        id = textInput.Id;
+
+                        break;
+                    case RequiredInputAttribute requiredInput:
+                        isRequired = requiredInput.IsRequired;
+                        break;
+                    case InputLabelAttribute inputLabel:
+                        label = inputLabel.Label;
+                        description = inputLabel.Description;
+                        break;
+
+                    case ModalSelectMenuOptionAttribute option:
+                        options.Add(new SelectMenuOptionBuilder(option.Label, option.Value, option.Description, Discord.Emote.Parse(option.Emote), option.IsDefault));
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            // The prefill content, might have some options
+            var prefillData = userDiscordModalContent as UserDiscordModalContentWithExtraData;
+            if (prefillData != null)
+            {
+                if (prefillData.ExtraData.TryGetValue(customId, out var optionsFillData))
+                {
+                    Debug.Assert(optionsFillData as IEnumerable<SelectMenuOptionBuilder> != null);
+                    options.AddRange(optionsFillData as IEnumerable<SelectMenuOptionBuilder>);
+                }
+            }
+
+
+            modalBuilder.AddSelectMenu(label, customId, options, placeholder, minValues, maxValues, isRequired, disabled, type, null, defaultValues, id, description, labelId);
+        }
+
+        private static void BuildCheckbox(ModalBuilder modalBuilder, PropertyInfo propertyInfo, UserDiscordModalContent? userDiscordModalContent)
+        {
+            var attributes = propertyInfo.GetCustomAttributes();
+
+            string label = propertyInfo.Name;
+            string customId = null;
+            bool? defaultState = null;
+            int? id = null;
+            string? description = null;
+            int? labelId = null;
+
+            var builder = new SelectMenuBuilder();
+
+            foreach (var attribute in attributes)
+            {
+                switch (attribute)
+                {
+                    case Discord.Interactions.ModalCheckboxAttribute textInput:
+                        customId = textInput.CustomId;
+                        id = textInput.Id;
+
+                        var fieldName = propertyInfo.GetCustomAttribute(typeof(JsonPropertyNameAttribute)) is JsonPropertyNameAttribute jsonNameAttrib ? jsonNameAttrib.Name : propertyInfo.Name;
+                        var fieldValue = userDiscordModalContent?.GetFieldContent(propertyInfo.Name) ?? "";
+
+                        if (bool.TryParse(fieldValue, out var defaultVal))
+                            defaultState = defaultVal;
+
+                        break;
+                    case RequiredInputAttribute { IsRequired: false }:
+                        // required: true => noop
+                        throw new InvalidOperationException("Checkbox component cannot be set as optional, see Discord API documentation for more information.");
+                    case InputLabelAttribute inputLabel:
+                        label = inputLabel.Label;
+                        description = inputLabel.Description;
+                        break;
+                    case DefaultValueAttribute defaultValue:
+                        defaultState ??= (bool)defaultValue.Value; //Only null assign, because if its non-null, then it was already filled by prefill content
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            //#TODO prefill default state
+
+            modalBuilder.AddCheckBox(label, customId, defaultState, description, labelId);
+        }
+
 
         public static Discord.Modal CreateModalFromName(string modalName, UserDiscordModalContent? preFillContent)
         {
@@ -200,6 +315,13 @@ namespace DiscordNetTools.Modal
                         break;
                     case ComponentType.RoleSelect:
                         BuildRoleSelect(builder, prop, preFillContent);
+                        break;
+                    case ComponentType.SelectMenu: // All select options, must be provided by preFillContent
+                        BuildSelectMenu(builder, prop, preFillContent);
+                        break;
+
+                    case ComponentType.Checkbox: // All select options, must be provided by preFillContent
+                        BuildCheckbox(builder, prop, preFillContent);
                         break;
 
                     case null:
