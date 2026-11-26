@@ -35,6 +35,13 @@ namespace DiscordNetTools.Modal
     {
         public bool SaveToDb => true;
 
+        // If true, the interaction is acknowledged with an ephemeral message as soon as the modal is
+        // submitted, before (slow) validation runs. This keeps the interaction alive past Discord's
+        // 3s deadline; all later responses in the flow must then be follow-ups (see InteractionExtensions).
+        public bool AckOnSubmit => false;
+
+        public string AckOnSubmitMessage => "Hold on a second, I'm still working on that…";
+
         Task<ValidationResult> Validate(IInteractionContext context);
 
         public static ValidationResult Fail(string message, bool canRetry = true)

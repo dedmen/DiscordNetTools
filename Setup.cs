@@ -159,12 +159,18 @@ namespace DiscordNetTools
 
                 // string customId, bool ignoreGroupNames = false, RunMode runMode = RunMode.Default
 
+                // RunMode.Sync: modal validation can take seconds (remote DB, Discord API, URL resolution).
+                // With the default RunMode.Async the handler would be fire-and-forget, HandleModalSubmittedAsync
+                // would return "success" before validation even ran, and its Sentry transaction/exception
+                // handling would be blind to everything that happens afterwards. Sync mode keeps the
+                // execution awaited (each modal submit still runs in parallel with any other interaction,
+                // the gateway dispatch itself is never blocked).
                 if (type1.Name.Contains("*"))
-                    meth.SetCustomAttribute(new CustomAttributeBuilder(typeof(ModalInteractionAttribute).GetConstructor(new Type[] { typeof(string), typeof(bool), typeof(Discord.Interactions.RunMode) }), new object[] { type1.Name, false, Discord.Interactions.RunMode.Default }));
+                    meth.SetCustomAttribute(new CustomAttributeBuilder(typeof(ModalInteractionAttribute).GetConstructor(new Type[] { typeof(string), typeof(bool), typeof(Discord.Interactions.RunMode) }), new object[] { type1.Name, false, Discord.Interactions.RunMode.Sync }));
                 else
                     meth.SetCustomAttribute(new CustomAttributeBuilder(
                         typeof(ModalInteractionAttribute).GetConstructor(new Type[] { typeof(string), typeof(bool), typeof(Discord.Interactions.RunMode) }),
-                        new object[] { $"{type1.Name}:(?:.*)", false, Discord.Interactions.RunMode.Default },
+                        new object[] { $"{type1.Name}:(?:.*)", false, Discord.Interactions.RunMode.Sync },
                         new[] { typeof(ModalInteractionAttribute).GetProperty(nameof(ModalInteractionAttribute.TreatAsRegex)) },
                         new object[] { true }
                     ));
